@@ -1,0 +1,154 @@
+import pandas as pd
+import numpy as np
+from typing import Dict, List, Any
+import logging
+
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    filename='healthcare_validation.log'
+)
+
+def validate_schema(df: pd.DataFrame) -> Dict[str, List[str]]:
+    """Validate the dataset schema and return any errors"""
+    expected_columns = {
+        'Patient_ID': str,
+        'Age': np.number,
+        'Gender': str,
+        'Blood_Pressure': str,
+        'Cholesterol': str,
+        'Diagnosis': str
+    }
+    
+    errors = {'missing_columns': [], 'type_errors': []}
+    
+    # Check for missing columns
+    for column in expected_columns:
+        if column not in df.columns:
+            errors['missing_columns'].append(column)
+            logging.error(f"Missing column: {column}")
+    
+    # Check data types
+    for column, expected_type in expected_columns.items():
+        if column in df.columns:
+            try:
+                if expected_type == np.number:
+                    pd.to_numeric(df[column])
+                elif expected_type == str:
+                    df[column].astype(str)
+            except:
+                errors['type_errors'].append(column)
+                logging.error(f"Type error in column: {column}")
+    
+    return errors
+
+def clean_healthcare_data(input_file: str, output_file: str) -> pd.DataFrame:
+    """Clean and validate healthcare dataset"""
+    try:
+        logging.info("Starting data validation and cleaning process")
+        
+        # Read the CSV file
+        logging.info("Reading the dataset...")
+        df = pd.read_csv(input_file)
+        
+        # Validate schema
+        logging.info("Validating schema...")
+        schema_errors = validate_schema(df)
+        if schema_errors['missing_columns'] or schema_errors['type_errors']:
+            for error_type, columns in schema_errors.items():
+                if columns:
+                    logging.error(f"{error_type}: {', '.join(columns)}")
+            raise ValueError("Schema validation failed")
+        
+        # Track original data stats
+        original_count = len(df)
+        logging.info(f"Original dataset has {original_count} records")
+
+        # Apply validation rules
+        validation_rules = {
+            'Patient_ID': {
+                'pattern': r'^P\d{4}$',
+                'message': 'Must start with P followed by 4 digits'
+            },
+            'Age': {
+                'range': (0, 120),
+                'message': 'Must be between 0 and 120'
+            },
+            'Gender': {
+                'values': ['M', 'F'],
+                'message': 'Must be M or F'
+            },
+            'Cholesterol': {
+                'values': ['Normal', 'High', 'Borderline'],
+                'message': 'Must be Normal, High, or Borderline'
+            },
+            'Diagnosis': {
+                'values': ['Healthy', 'Heart Disease', 'Hypertension', 'Monitor', 'At Risk'],
+                'message': 'Invalid diagnosis value'
+            }
+        }
+
+        # Apply validations
+        logging.info("Applying validation rules...")
+        invalid_values = {col: [] for col in df.columns}
+        
+        for column, rules in validation_rules.items():
+            if 'pattern' in rules:
+                mask = ~df[column].str.match(rules['pattern'], na=False)
+                invalid_values[column].extend(df.loc[mask, column].unique())
+                df.loc[mask, column] = np.nan
+            
+            elif 'range' in rules:
+                mask = ~df[column].between(*rules['range'])
+                invalid_values[column].extend(df.loc[mask, column].unique())
+                df.loc[mask, column] = np.nan
+            
+            elif 'values' in rules:
+                mask = ~df[column].isin(rules['values'])
+                invalid_values[column].extend(df.loc[mask, column].unique())
+                df.loc[mask, column] = np.nan
+
+        # Clean and validate data
+        logging.info("Performing data cleaning...")
+        df = df.drop_duplicates()
+        df = df.dropna(thresh=df.shape[1]-2)
+
+        # Generate validation report
+        validation_report = {
+            'total_records': original_count,
+            'valid_records': len(df),
+            'invalid_records': original_count - len(df),
+            'invalid_values': invalid_values,
+            'null_counts': df.isnull().sum().to_dict()
+        }
+
+        # Save validation report
+        logging.info("Saving validation report...")
+        with open('validation_report.txt', 'w') as f:
+            for key, value in validation_report.items():
+                f.write(f"{key}:\n{value}\n\n")
+
+        # Save cleaned dataset
+        logging.info(f"Saving cleaned dataset to {output_file}")
+        df.to_csv(output_file, index=False)
+        logging.info("Validation and cleaning process completed!")
+        
+        return df, validation_report
+    
+    except Exception as e:
+        logging.error(f"Error during validation: {str(e)}")
+        raise
+
+if __name__ == "__main__":
+    input_file = r"c:\Users\sansk\Documents\SQAL\Healthcare_Dataset_1000.csv"
+    output_file = r"c:\Users\sansk\Documents\SQAL\Healthcare_Dataset_1000_cleaned.csv"
+    
+    try:
+        cleaned_df, validation_report = clean_healthcare_data(input_file, output_file)
+        print("\nValidation Summary:")
+        print(f"Total Records: {validation_report['total_records']}")
+        print(f"Valid Records: {validation_report['valid_records']}")
+        print(f"Invalid Records: {validation_report['invalid_records']}")
+    except Exception as e:
+        print(f"Validation failed: {str(e)}")
