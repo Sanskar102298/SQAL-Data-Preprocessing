@@ -1,0 +1,83 @@
+import pandas as pd
+import numpy as np
+
+def clean_healthcare_data(input_file, output_file):
+    # Read the CSV file
+    print("Reading the dataset...")
+    df = pd.read_csv(input_file)
+    
+    # Make a copy of original data
+    original_count = len(df)
+    print(f"Original dataset has {original_count} records")
+
+    # 1. Handle missing values
+    print("\nHandling missing values...")
+    df['Diagnosis'] = df['Diagnosis'].replace('N/A', np.nan)
+    
+    # 2. Clean and validate Blood Pressure
+    print("Cleaning blood pressure values...")
+    def validate_bp(bp):
+        try:
+            systolic, diastolic = map(int, bp.split('/'))
+            # Check if BP is within reasonable range
+            if 70 <= systolic <= 200 and 40 <= diastolic <= 120:
+                return f"{systolic}/{diastolic}"
+            else:
+                return np.nan
+        except:
+            return np.nan
+    
+    df['Blood_Pressure'] = df['Blood_Pressure'].apply(validate_bp)
+    
+    # 3. Validate Age
+    print("Validating age values...")
+    df.loc[~df['Age'].between(0, 120), 'Age'] = np.nan
+    
+    # 4. Clean Gender values
+    print("Cleaning gender values...")
+    df['Gender'] = df['Gender'].apply(lambda x: x.upper() if pd.notna(x) else x)
+    df.loc[~df['Gender'].isin(['M', 'F']), 'Gender'] = np.nan
+    
+    # 5. Validate Cholesterol values
+    print("Validating cholesterol values...")
+    valid_cholesterol = ['Normal', 'High', 'Borderline']
+    df.loc[~df['Cholesterol'].isin(valid_cholesterol), 'Cholesterol'] = np.nan
+    
+    # 6. Validate Diagnosis values
+    print("Validating diagnosis values...")
+    valid_diagnosis = ['Healthy', 'Heart Disease', 'Hypertension', 'Monitor', 'At Risk']
+    df.loc[~df['Diagnosis'].isin(valid_diagnosis), 'Diagnosis'] = np.nan
+    
+    # 7. Remove duplicates
+    print("Removing duplicates...")
+    df = df.drop_duplicates()
+    
+    # 8. Remove rows with too many missing values
+    print("Removing rows with excessive missing values...")
+    df = df.dropna(thresh=df.shape[1]-2)  # Keep rows with at least n-2 non-null values
+    
+    # Calculate cleaning statistics
+    cleaned_count = len(df)
+    removed_records = original_count - cleaned_count
+    missing_values = df.isnull().sum()
+    
+    # Print summary
+    print("\nCleaning Summary:")
+    print(f"Total records removed: {removed_records}")
+    print(f"Records remaining: {cleaned_count}")
+    print("\nMissing values in each column:")
+    print(missing_values)
+    
+    # Save cleaned dataset
+    print(f"\nSaving cleaned dataset to {output_file}")
+    df.to_csv(output_file, index=False)
+    print("Cleaning process completed!")
+    
+    return df
+
+# Execute the cleaning process
+if __name__ == "__main__":
+    input_file = r"c:\Users\sansk\Documents\SQAL\Healthcare_Dataset_1000.csv"
+    output_file = r"c:\Users\sansk\Documents\SQAL\Healthcare_Dataset_1000_cleaned.csv"
+    
+    cleaned_df = clean_healthcare_data(input_file, output_file)
